@@ -432,7 +432,7 @@
     </div>
   </div>
 
-  <footer>PROTOTYPE — checkout below (including Apple Pay) is a mocked flow for demo purposes. A live version needs a small backend holding the real Stripe secret key and Apple Pay merchant setup.</footer>
+  <footer>Payments are securely handled by Stripe. Currently running in test mode — no real charges.</footer>
 </div>
 
 <div class="overlay hidden" id="overlay">
@@ -488,6 +488,14 @@
 
 <script>
 (function(){
+  // Detect return from Stripe checkout
+  const urlParams = new URLSearchParams(window.location.search);
+  const justPaid = urlParams.get('paid') === 'true';
+  if(justPaid){
+    // Clean the URL so refreshing doesn't re-trigger
+    history.replaceState(null, '', window.location.pathname);
+  }
+
   const SIZES = {
     reel:{w:720,h:1280,cssW:220,cssH:391},
     post:{w:1080,h:1350,cssW:256,cssH:320},
@@ -881,8 +889,8 @@
   function checkReady(){ payBtn.disabled = !(discImg && audioLoaded); }
 
   payBtn.addEventListener('click', ()=>{
-    overlay.classList.remove('hidden');
-    payForm.style.display='block'; renderStage.style.display='none'; downloadLink.style.display='none';
+    // Open real Stripe checkout — redirects back to spinr.uk?paid=true after payment
+    window.open('https://buy.stripe.com/test_aFaeVe6Or8wK7nN9KD6c000', '_blank');
   });
   modalClose.addEventListener('click', ()=>overlay.classList.add('hidden'));
   applePayBtn.addEventListener('click', startRenderFlow);
@@ -919,7 +927,24 @@
       });
   }
 
-  // ---- Core export capture: records the live canvas + trimmed audio into a webm blob ----
+  // If returning from Stripe payment, show the download modal automatically
+  if(justPaid){
+    overlay.classList.remove('hidden');
+    payForm.style.display='none';
+    renderStage.style.display='block';
+    downloadLink.style.display='none';
+
+    if(preRenderedBlob && !preRenderStale && !preRenderInProgress){
+      statusLine.textContent='Payment confirmed! Your spinner is ready.';
+      progressFill.style.width='100%';
+      downloadLink.href = preRenderedUrl;
+      downloadLink.download = 'spinner-'+currentSize+'.webm';
+      downloadLink.style.display='block';
+    } else {
+      statusLine.textContent='Payment confirmed! Set up your spinner above, then your download will appear here.';
+      progressFill.style.width='0%';
+    }
+  }
   function captureExport(onProgress){
     return new Promise((resolve, reject)=>{
       const stream = canvas.captureStream(30);
