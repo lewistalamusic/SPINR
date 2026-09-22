@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spinner</title>
+<style>
+  /* Fixel Display is MacPaw's proprietary font (used in CleanMyMac X) and isn't
+     hosted on a public CDN, so it can't be embedded directly here. If you have
+     the licensed files, drop this @font-face back in with real URLs and the
+     stack below will pick it up automatically. */
+  @font-face{
+    font-family:"Fixel Display";
+    src:local("Fixel Display");
+    font-weight:100 900;
+  }
+  :root{
+    --bg:#000000;
+    --glass:rgba(255,255,255,0.055);
+    --glass-brd:rgba(255,255,255,0.14);
+    --glass-hi:rgba(255,255,255,0.09);
+    --ink:#F3F5F8;
+    --dim:rgba(243,245,248,0.55);
+    --dim2:rgba(243,245,248,0.36);
+    --cyan:#CFFF04;
+    --violet:#A3D400;
+    --pink:#E8FF66;
+    --line:rgba(255,255,255,0.10);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Fixel Display",-apple-system,"SF Pro Display",Inter,"Segoe UI",sans-serif;
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ambient neon blobs */
+  .blob{position:fixed;border-radius:50%;filter:blur(110px);opacity:0.5;z-index:0;pointer-events:none;}
+  .blob-1{width:520px;height:520px;background:var(--violet);top:-180px;left:-140px;}
+  .blob-2{width:480px;height:480px;background:var(--cyan);top:20%;right:-200px;opacity:0.35;}
+  .blob-3{width:460px;height:460px;background:var(--pink);bottom:-220px;left:20%;opacity:0.3;}
+
+  .wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:64px 24px 100px;}
+
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:12px;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--dim);
+    background:var(--glass);
+    border:1px solid var(--glass-brd);
+    padding:7px 14px;border-radius:100px;
+    backdrop-filter:blur(20px);
+    margin-bottom:22px;
+  }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);}
+
+  h1{
+    font-size:clamp(36px,5.4vw,58px);
+    font-weight:650;
+    letter-spacing:-0.02em;
+    line-height:1.03;
+    margin:0 0 16px;
+    max-width:680px;
+  }
+  h1 span{
+    background:linear-gradient(100deg,var(--cyan),var(--violet) 55%,var(--pink));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .sub{color:var(--dim);font-size:16.5px;max-width:480px;line-height:1.6;margin:0 0 48px;font-weight:400;}
+
+  .layout{display:grid;grid-template-columns:400px 1fr;gap:28px;align-items:start;}
+  @media (max-width:880px){.layout{grid-template-columns:1fr;}}
+
+  /* ---------- Glass panel base ---------- */
+  .glass{
+    background:var(--glass);
+    border:1px solid var(--glass-brd);
+    border-radius:28px;
+    backdrop-filter:blur(28px) saturate(160%);
+    -webkit-backdrop-filter:blur(28px) saturate(160%);
+    box-shadow:0 1px 0 rgba(255,255,255,0.12) inset, 0 20px 60px -30px rgba(0,0,0,0.7);
+  }
+
+  /* ---------- Preview device ---------- */
+  .preview-card{padding:22px;display:flex;flex-direction:column;align-items:center;position:sticky;top:24px;}
+  .frame-tabs{display:flex;gap:6px;background:rgba(255,255,255,0.05);padding:4px;border-radius:100px;margin-bottom:20px;border:1px solid var(--line);}
+  .frame-tab{
+    border:none;background:transparent;color:var(--dim);
+    font-size:12.5px;font-weight:600;padding:8px 15px;border-radius:100px;cursor:pointer;
+    font-family:inherit;
+  }
+  .frame-tab.active{background:var(--ink);color:#0A0A0D;}
+
+  .device{
+    position:relative;
+    border-radius:26px;
+    overflow:hidden;
+    background:#000;
+    border:1px solid rgba(255,255,255,0.14);
+    box-shadow:0 30px 70px -25px rgba(0,0,0,0.8);
+    transition:width 0.3s ease, height 0.3s ease;
+  }
+  #stageCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+  .chrome-top{
+    position:absolute;top:0;left:0;right:0;padding:14px 14px 0;
+    display:flex;align-items:center;justify-content:space-between;z-index:2;
+    color:#fff;font-size:12px;font-weight:600;
+  }
+  .chrome-user{display:flex;align-items:center;gap:8px;}
+  .chrome-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--pink));}
+  .chrome-dots{opacity:0.9;font-weight:800;letter-spacing:1px;}
+
+  .chrome-bottom{
+    position:absolute;left:0;right:0;bottom:0;padding:0 14px 16px;z-index:2;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+  }
+  .chrome-caption{color:#fff;font-size:12px;line-height:1.4;max-width:75%;text-shadow:0 1px 6px rgba(0,0,0,0.5);}
+  .chrome-caption b{font-weight:700;}
+  .chrome-actions{display:flex;flex-direction:column;gap:12px;color:#fff;}
+  .chrome-actions .ic{width:24px;height:24px;opacity:0.95;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));}
+
+  .yt-bar{
+    position:absolute;left:0;right:0;bottom:0;padding:10px 14px;z-index:2;
+    background:linear-gradient(transparent,rgba(0,0,0,0.55));
+    display:flex;align-items:center;gap:8px;color:#fff;font-size:11.5px;
+  }
+  .yt-progress{flex:1;height:3px;background:rgba(255,255,255,0.35);border-radius:2px;position:relative;}
+  .yt-progress i{position:absolute;left:0;top:0;bottom:0;width:38%;background:#FF0000;border-radius:2px;}
+
+  .device-hint{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    text-align:center;font-size:12.5px;color:rgba(255,255,255,0.5);
+    padding:0 30px;z-index:1;pointer-events:none;
+  }
+
+  /* ---------- Settings rows ---------- */
+  .settings{padding:8px 0;}
+  .row{
+    display:flex;align-items:center;gap:14px;
+    padding:18px 22px;border-bottom:1px solid var(--line);
+  }
+  .row:last-child{border-bottom:none;}
+  .row-icon{
+    width:36px;height:36px;border-radius:11px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,0.06);border:1px solid var(--line);
+  }
+  .row-icon svg{width:17px;height:17px;stroke:var(--cyan);}
+  .row-body{flex:1;min-width:0;}
+  .row-title{font-size:14.5px;font-weight:600;margin-bottom:2px;}
+  .row-sub{font-size:12.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row-ctrl{flex-shrink:0;}
+
+  .upload-btn{
+    background:rgba(255,255,255,0.08);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:9px 16px;border-radius:100px;font-size:12.5px;font-weight:600;
+    cursor:pointer;font-family:inherit;
+  }
+  .upload-btn.filled{background:rgba(207,255,4,0.12);border-color:rgba(207,255,4,0.4);color:var(--cyan);}
+  input[type=file]{display:none;}
+
+  .pillset{display:flex;gap:6px;background:rgba(255,255,255,0.05);padding:4px;border-radius:100px;border:1px solid var(--line);}
+  .pillset button{
+    border:none;background:transparent;color:var(--dim);
+    font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:100px;cursor:pointer;font-family:inherit;
+  }
+  .pillset button.active{background:linear-gradient(135deg,var(--cyan),var(--violet));color:#0A0A0D;}
+
+  .row.disabled{opacity:0.35;pointer-events:none;}
+  .yt-duration-note{
+    display:none;
+    margin:-8px 22px 16px;
+    font-size:12px;color:var(--cyan);
+    background:rgba(207,255,4,0.08);
+    border:1px solid rgba(207,255,4,0.25);
+    padding:9px 12px;border-radius:10px;
+  }
+  .trim-wrap{padding:0 22px 20px;margin-top:-6px;}
+  .trim-wrap .row-sub{margin-bottom:10px;}
+  .trim-play-btn{
+    width:34px;height:34px;border-radius:50%;flex-shrink:0;cursor:pointer;
+    background:rgba(255,255,255,0.08);border:1px solid var(--line);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .trim-play-btn:disabled{opacity:0.3;cursor:not-allowed;}
+  .trim-play-btn svg{width:13px;height:13px;}
+  .trim-bar-wrap{
+    position:relative;height:36px;border-radius:9px;margin-bottom:12px;
+    background:repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 2px, transparent 2px 6px);
+    border:1px solid var(--line);overflow:hidden;
+  }
+  .trim-window{
+    position:absolute;top:0;bottom:0;
+    background:rgba(207,255,4,0.20);
+    border-left:2px solid var(--cyan);border-right:2px solid var(--cyan);
+  }
+  .trim-playhead{
+    position:absolute;top:0;bottom:0;width:2px;background:var(--ink);
+    box-shadow:0 0 6px rgba(255,255,255,0.6);display:none;
+  }
+  .trim-time-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim2);margin-top:8px;}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;background:var(--line);border-radius:2px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:var(--ink);cursor:pointer;box-shadow:0 0 0 4px rgba(207,255,4,0.35);
+  }
+
+  /* ---------- Buy panel ---------- */
+  .buy{
+    margin-top:22px;padding:24px 26px;
+    display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;
+  }
+  .buy-price{display:flex;flex-direction:column;}
+  .buy-price .amt{font-size:28px;font-weight:700;}
+  .buy-price .desc{font-size:12.5px;color:var(--dim2);margin-top:2px;}
+  .buy-right{display:flex;align-items:center;gap:14px;}
+  .applepay-flag{
+    display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);
+    background:rgba(255,255,255,0.06);border:1px solid var(--line);
+    padding:6px 12px;border-radius:100px;
+  }
+  .buy-cta{
+    background:linear-gradient(135deg,var(--cyan),var(--violet) 60%,var(--pink));
+    border:none;color:#0A0A0D;font-weight:700;font-size:14.5px;
+    padding:15px 28px;border-radius:100px;cursor:pointer;font-family:inherit;
+    box-shadow:0 10px 30px -10px rgba(207,255,4,0.45);
+  }
+  .buy-cta:disabled{background:rgba(255,255,255,0.08);color:var(--dim2);box-shadow:none;cursor:not-allowed;}
+
+  .render-status{
+    width:100%;order:3;
+    display:flex;align-items:center;gap:8px;
+    font-size:12px;color:var(--dim);
+    margin-top:4px;
+  }
+  .render-status:before{
+    content:'';width:7px;height:7px;border-radius:50%;flex-shrink:0;
+    background:var(--dim2);
+  }
+  .render-status.rs-rendering:before{background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 1.1s ease-in-out infinite;}
+  .render-status.rs-ready{color:var(--cyan);}
+  .render-status.rs-ready:before{background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+  .render-status.rs-error{color:#ff8a8a;}
+  .render-status.rs-error:before{background:#ff8a8a;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+  footer{max-width:1120px;margin:60px auto 0;padding:20px 24px 0;border-top:1px solid var(--line);color:var(--dim2);font-size:11.5px;position:relative;z-index:1;}
+
+  /* ---------- Modal ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(4,4,8,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .overlay.hidden{display:none;}
+  .modal{width:100%;max-width:400px;padding:30px;border-radius:28px;}
+  .modal h2{font-size:21px;font-weight:650;margin:0 0 6px;}
+  .modal p{color:var(--dim);font-size:13px;line-height:1.55;margin:0 0 20px;}
+  .demo-flag{font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--cyan);margin-bottom:14px;}
+  .applepay-btn{
+    width:100%;background:#0A0A0D;border:1px solid var(--line);color:#fff;
+    padding:14px;border-radius:14px;font-weight:700;font-size:14.5px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;font-family:inherit;
+  }
+  .or-div{display:flex;align-items:center;gap:10px;color:var(--dim2);font-size:11.5px;margin:14px 0;}
+  .or-div:before,.or-div:after{content:"";flex:1;height:1px;background:var(--line);}
+  .fake-input{
+    background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;font-size:13px;color:var(--ink);margin-bottom:10px;
+  }
+  .modal-row{display:flex;gap:10px;}
+  .modal-row .fake-input{flex:1;}
+  .modal-cta{
+    width:100%;background:linear-gradient(135deg,var(--cyan),var(--violet));
+    color:#0A0A0D;border:none;padding:14px;border-radius:14px;font-weight:700;font-size:14px;
+    cursor:pointer;margin-top:6px;font-family:inherit;
+  }
+  .modal-close{display:block;margin:14px auto 0;background:none;border:none;color:var(--dim2);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit;}
+  .progress-track{height:5px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;margin-top:16px;}
+  .progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--violet));transition:width 0.15s linear;}
+  .status-line{font-size:12px;color:var(--dim);margin-top:10px;}
+  .download-link{display:block;text-align:center;background:linear-gradient(135deg,var(--cyan),var(--violet));color:#0A0A0D;padding:14px;border-radius:14px;text-decoration:none;font-weight:700;font-size:14px;margin-top:16px;}
+
+  /* ---------- Crop modal ---------- */
+  .crop-modal{max-width:360px;}
+  .crop-canvas-wrap{position:relative;width:100%;aspect-ratio:1;border-radius:20px;overflow:hidden;background:#100c16;touch-action:none;}
+  .crop-canvas-wrap canvas{width:100%;height:100%;display:block;cursor:grab;}
+  .crop-canvas-wrap canvas:active{cursor:grabbing;}
+  .crop-mask{position:absolute;inset:0;pointer-events:none;}
+  .crop-mask i{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:100%;height:100%;border-radius:50%;
+    box-shadow:0 0 0 2000px rgba(7,8,13,0.62);
+    border:1.5px dashed rgba(255,255,255,0.5);
+  }
+  .crop-hint{text-align:center;font-size:12px;color:var(--dim2);margin:14px 0 4px;}
+  .zoom-row{display:flex;align-items:center;gap:10px;margin-top:6px;}
+  .zoom-row svg{width:15px;height:15px;stroke:var(--dim);flex-shrink:0;}
+  .crop-actions{display:flex;gap:10px;margin-top:18px;}
+  .crop-actions button{flex:1;font-family:inherit;}
+  .crop-cancel{
+    background:rgba(255,255,255,0.07);border:1px solid var(--line);color:var(--ink);
+    padding:13px;border-radius:14px;font-weight:600;font-size:13.5px;cursor:pointer;
+  }
+  .crop-use{
+    background:linear-gradient(135deg,var(--cyan),var(--violet));border:none;color:#0A0A0D;
+    padding:13px;border-radius:14px;font-weight:700;font-size:13.5px;cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="wrap">
+
+  <div class="eyebrow"><span class="dot"></span>Made for Artists</div>
+  <h1>Create.<br><span>Spin. Share.</span></h1>
+  <p class="sub">Drop your art on the disc, pick a backdrop, trim the track — see exactly how it'll look before you buy.</p>
+
+  <div class="layout">
+
+    <!-- LEFT: live preview -->
+    <div class="glass preview-card">
+      <div class="frame-tabs" id="frameTabs">
+        <button class="frame-tab active" data-size="post">Post</button>
+        <button class="frame-tab" data-size="reel">Reel</button>
+        <button class="frame-tab" data-size="youtube">YouTube</button>
+      </div>
+
+      <div class="device" id="device" style="width:280px;height:280px;">
+        <canvas id="stageCanvas"></canvas>
+        <div class="device-hint" id="deviceHint" style="display:none;"></div>
+
+        <div class="chrome-top" id="chromeTop">
+          <div class="chrome-user"><div class="chrome-avatar"></div>yourhandle</div>
+          <div class="chrome-dots">⋯</div>
+        </div>
+        <div class="chrome-bottom" id="chromeBottom">
+          <div class="chrome-caption"><b>yourhandle</b> — spinning it up 🎧</div>
+          <div class="chrome-actions">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+        </div>
+        <div class="yt-bar" id="ytBar" style="display:none;">
+          <span>0:00</span>
+          <div class="yt-progress"><i></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: settings -->
+    <div>
+      <div class="glass settings">
+
+        <div class="row">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="row-body"><div class="row-title">Disc Image</div><div class="row-sub" id="discSub">No file chosen</div></div>
+          <div class="row-ctrl"><button class="upload-btn" id="discBtn">Choose</button><input type="file" id="discInput" accept="image/*"></div>
+        </div>
+
+        <div class="row">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>
+          <div class="row-body"><div class="row-title">Background Image</div><div class="row-sub" id="bgSub">Optional — defaults to black</div></div>
+          <div class="row-ctrl"><button class="upload-btn" id="bgBtn">Choose</button><input type="file" id="bgInput" accept="image/*"></div>
+        </div>
+
+        <div class="row">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+          <div class="row-body"><div class="row-title">Audio File</div><div class="row-sub" id="audioSub">No file chosen</div></div>
+          <div class="row-ctrl"><button class="upload-btn" id="audioBtn">Choose</button><input type="file" id="audioInput" accept="audio/*"></div>
+        </div>
+
+        <div class="row" id="durationRow">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+          <div class="row-body"><div class="row-title">Duration</div><div class="row-sub">Length of the final video</div></div>
+          <div class="row-ctrl pillset" id="durationPills">
+            <button data-dur="15" class="active">15s</button>
+            <button data-dur="30">30s</button>
+            <button data-dur="60">60s</button>
+          </div>
+        </div>
+        <div class="yt-duration-note" id="ytDurationNote" style="display:none;">YouTube export will be the duration of the track uploaded.</div>
+
+        <div class="row" style="border-bottom:none;">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3l6 9-6 9M18 3l-6 9 6 9"/></svg></div>
+          <div class="row-body"><div class="row-title">Audio Trim</div><div class="row-sub" id="trimSub">Load audio to choose the part you want</div></div>
+          <button class="trim-play-btn" id="trimPlayBtn" disabled>
+            <svg id="trimPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+        </div>
+        <div class="trim-wrap">
+          <div class="trim-bar-wrap" id="trimBarWrap">
+            <div class="trim-window" id="trimWindow"></div>
+            <div class="trim-playhead" id="trimPlayhead"></div>
+          </div>
+          <input type="range" id="trimStart" min="0" max="0" value="0" disabled>
+          <div class="trim-time-row">
+            <span id="trimCurTime">0:00</span>
+            <span id="trimTotalLabel">Load a track to preview</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 15v6h12v-6M6 9h12v6H6z"/></svg></div>
+          <div class="row-body"><div class="row-title">Export Size</div><div class="row-sub">Matches the preview on the left</div></div>
+          <div class="row-ctrl pillset" id="sizePills">
+            <button data-size="post" class="active">Post</button>
+            <button data-size="reel">Reel</button>
+            <button data-size="youtube">YouTube</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="glass buy">
+        <div class="buy-price">
+          <span class="amt">£10</span>
+          <span class="desc">per rendered spinner</span>
+        </div>
+        <div class="buy-right">
+          <span class="applepay-flag">🍎 Apple Pay available</span>
+          <button class="buy-cta" id="payBtn" disabled>Buy now</button>
+        </div>
+        <div class="render-status" id="renderStatus" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>PROTOTYPE — checkout below (including Apple Pay) is a mocked flow for demo purposes. A live version needs a small backend holding the real Stripe secret key and Apple Pay merchant setup.</footer>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="glass modal">
+    <div class="demo-flag">Demo checkout · no real charge</div>
+    <h2>Pay £10</h2>
+    <p id="modalSub">This is a mocked checkout so you can see the full flow — nothing is charged.</p>
+
+    <div id="payForm">
+      <button class="applepay-btn" id="applePayBtn"> Pay</button>
+      <div class="or-div">or pay by card</div>
+      <div class="fake-input" contenteditable="true">Email</div>
+      <div class="fake-input" contenteditable="true">4242 4242 4242 4242</div>
+      <div class="modal-row">
+        <div class="fake-input" contenteditable="true">MM / YY</div>
+        <div class="fake-input" contenteditable="true">CVC</div>
+      </div>
+      <button class="modal-cta" id="confirmPay">Pay £10</button>
+    </div>
+
+    <div id="renderStage" style="display:none;">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="status-line" id="statusLine">Rendering your spinner…</div>
+      <a href="#" class="download-link" id="downloadLink" style="display:none;">Download your video</a>
+    </div>
+
+    <button class="modal-close" id="modalClose">Cancel</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="cropOverlay">
+  <div class="glass modal crop-modal">
+    <h2 id="cropTitle">Crop your artwork</h2>
+    <p id="cropSub" style="margin-bottom:14px;">Drag to reposition, use the slider to zoom. Only what's inside the circle will show on the disc.</p>
+
+    <div class="crop-canvas-wrap">
+      <canvas id="cropCanvas"></canvas>
+      <div class="crop-mask"><i></i></div>
+    </div>
+
+    <div class="zoom-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="10" cy="10" r="6"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="range" id="zoomSlider" min="1" max="3.5" step="0.01" value="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="10" cy="10" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+    </div>
+
+    <div class="crop-actions">
+      <button class="crop-cancel" id="cropCancelBtn">Cancel</button>
+      <button class="crop-use" id="cropUseBtn">Use Photo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const SIZES = {
+    reel:{w:720,h:1280,cssW:220,cssH:391},
+    post:{w:1080,h:1350,cssW:256,cssH:320},
+    youtube:{w:1280,h:720,cssW:340,cssH:191}
+  };
+  let currentSize = 'post';
+
+  const canvas = document.getElementById('stageCanvas');
+  const ctx = canvas.getContext('2d');
+  const device = document.getElementById('device');
+  const deviceHint = document.getElementById('deviceHint');
+  const chromeTop = document.getElementById('chromeTop');
+  const chromeBottom = document.getElementById('chromeBottom');
+  const ytBar = document.getElementById('ytBar');
+
+  const discBtn = document.getElementById('discBtn');
+  const discInput = document.getElementById('discInput');
+  const discSub = document.getElementById('discSub');
+  const bgBtn = document.getElementById('bgBtn');
+  const bgInput = document.getElementById('bgInput');
+  const bgSub = document.getElementById('bgSub');
+  const audioBtn = document.getElementById('audioBtn');
+  const audioInput = document.getElementById('audioInput');
+  const audioSub = document.getElementById('audioSub');
+  const trimStart = document.getElementById('trimStart');
+  const trimSub = document.getElementById('trimSub');
+  const trimPlayBtn = document.getElementById('trimPlayBtn');
+  const trimPlayIcon = document.getElementById('trimPlayIcon');
+  const trimWindow = document.getElementById('trimWindow');
+  const trimPlayhead = document.getElementById('trimPlayhead');
+  const trimCurTime = document.getElementById('trimCurTime');
+  const trimTotalLabel = document.getElementById('trimTotalLabel');
+  const durationPills = document.getElementById('durationPills');
+  const durationRow = document.getElementById('durationRow');
+  const ytDurationNote = document.getElementById('ytDurationNote');
+  const sizePills = document.getElementById('sizePills');
+  const frameTabs = document.getElementById('frameTabs');
+  const payBtn = document.getElementById('payBtn');
+  const renderStatus = document.getElementById('renderStatus');
+
+  const overlay = document.getElementById('overlay');
+  const applePayBtn = document.getElementById('applePayBtn');
+  const confirmPay = document.getElementById('confirmPay');
+  const payForm = document.getElementById('payForm');
+  const renderStage = document.getElementById('renderStage');
+  const progressFill = document.getElementById('progressFill');
+  const statusLine = document.getElementById('statusLine');
+  const downloadLink = document.getElementById('downloadLink');
+  const modalClose = document.getElementById('modalClose');
+
+  let discImg=null, bgImg=null;
+  let audio = new Audio();
+  let angle=0, lastFrame=null, playing=false;
+  let audioLoaded=false;
+  let durationSel=15, trimLen=0;
+
+  function applySizeToCanvas(){
+    const s = SIZES[currentSize];
+    canvas.width = s.w; canvas.height = s.h;
+    device.style.width = s.cssW+'px';
+    device.style.height = s.cssH+'px';
+    if(currentSize==='youtube'){ chromeTop.style.display='none'; chromeBottom.style.display='none'; ytBar.style.display='flex'; }
+    else { chromeTop.style.display='flex'; chromeBottom.style.display='flex'; ytBar.style.display='none'; }
+  }
+  applySizeToCanvas();
+
+  function setActiveSize(size){
+    currentSize = size;
+    applySizeToCanvas();
+    [...sizePills.children].forEach(b=>b.classList.toggle('active', b.dataset.size===size));
+    [...frameTabs.children].forEach(b=>b.classList.toggle('active', b.dataset.size===size));
+    const isYoutube = size==='youtube';
+    durationRow.classList.toggle('disabled', isYoutube);
+    ytDurationNote.style.display = isYoutube ? 'block' : 'none';
+    if(isYoutube && audioLoaded){ durationSel = audio.duration; recalcTrim(); }
+    else if(!isYoutube){ durationSel = Number(durationPills.querySelector('.active').dataset.dur); if(audioLoaded) recalcTrim(); }
+    scheduleBackgroundRender();
+  }
+  sizePills.addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) setActiveSize(b.dataset.size); });
+  frameTabs.addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) setActiveSize(b.dataset.size); });
+
+  function drawFrame(){
+    const w=canvas.width, h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    // background
+    if(bgImg){
+      const scale = Math.max(w/bgImg.width, h/bgImg.height);
+      const iw=bgImg.width*scale, ih=bgImg.height*scale;
+      ctx.drawImage(bgImg, (w-iw)/2, (h-ih)/2, iw, ih);
+      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(0,0,w,h);
+    } else {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0,0,w,h);
+    }
+
+    // disc
+    const cx=w/2, cy=h/2, r=Math.min(w,h)*0.34;
+    ctx.save();
+    ctx.translate(cx,cy); ctx.rotate(angle); ctx.translate(-cx,-cy);
+
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle='#100c16'; ctx.fill();
+
+    // artwork fills the whole disc
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.clip();
+    if(discImg){
+      const scale = Math.max((r*2)/discImg.width, (r*2)/discImg.height);
+      const iw=discImg.width*scale, ih=discImg.height*scale;
+      ctx.drawImage(discImg, cx-iw/2, cy-ih/2, iw, ih);
+      // faint groove texture over the artwork so it still reads as a record
+      for(let i=r;i>r*0.3;i-=Math.max(5,r*0.045)){
+        ctx.beginPath(); ctx.arc(cx,cy,i,0,Math.PI*2);
+        ctx.strokeStyle='rgba(0,0,0,0.10)'; ctx.lineWidth=1; ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle='#211a30'; ctx.fill();
+      for(let i=r;i>r*0.3;i-=Math.max(5,r*0.045)){
+        ctx.beginPath(); ctx.arc(cx,cy,i,0,Math.PI*2);
+        ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.stroke();
+      }
+      ctx.fillStyle='#CFFF04'; ctx.font='600 '+Math.round(r*0.13)+'px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('Drop Artwork', cx, cy - r*0.09);
+      ctx.fillText('In Here', cx, cy + r*0.09);
+    }
+    ctx.restore();
+
+    ctx.beginPath(); ctx.arc(cx,cy,r*0.045,0,Math.PI*2); ctx.fillStyle='#07080D'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy,r*0.045,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1; ctx.stroke();
+
+    const vg = ctx.createRadialGradient(cx,cy,r*0.6,cx,cy,r);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.4)');
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=vg; ctx.fill();
+    ctx.restore();
+  }
+
+  function tick(t){
+    if(lastFrame===null) lastFrame=t;
+    const dt=(t-lastFrame)/1000; lastFrame=t;
+    if(discImg) angle += Math.PI*2*0.12*dt; // one fixed, slow, constant speed
+    drawFrame();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  function loadDiscFile(f){
+    if(!f || !f.type.startsWith('image/')) return;
+    pendingFileName = f.name;
+    const im=new Image();
+    im.onload=()=> openCropModal(im, 'disc');
+    im.src=URL.createObjectURL(f);
+  }
+
+  function loadBgFile(f){
+    if(!f || !f.type.startsWith('image/')) return;
+    pendingFileName = f.name;
+    const im=new Image();
+    im.onload=()=> openCropModal(im, 'bg');
+    im.src=URL.createObjectURL(f);
+  }
+
+  // ---- Crop modal (shared by disc artwork + background image) ----
+  const cropOverlay = document.getElementById('cropOverlay');
+  const cropCanvas = document.getElementById('cropCanvas');
+  const cropCtx = cropCanvas.getContext('2d');
+  const cropCanvasWrap = document.querySelector('.crop-canvas-wrap');
+  const cropMaskEl = document.querySelector('.crop-mask');
+  const cropTitle = document.getElementById('cropTitle');
+  const cropSub = document.getElementById('cropSub');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const cropCancelBtn = document.getElementById('cropCancelBtn');
+  const cropUseBtn = document.getElementById('cropUseBtn');
+
+  let cropMode='disc', cropW=640, cropH=640;
+  let pendingFileName='', cropRawImg=null, cropBaseScale=1, cropZoom=1, cropPanX=0, cropPanY=0;
+  let cropDragging=false, cropLastX=0, cropLastY=0;
+
+  function openCropModal(im, mode){
+    cropMode = mode;
+    cropRawImg = im;
+    cropZoom = 1; cropPanX = 0; cropPanY = 0;
+    zoomSlider.value = 1;
+
+    if(mode==='disc'){
+      cropW = 640; cropH = 640;
+      cropMaskEl.style.display = 'block';
+      cropTitle.textContent = 'Crop your artwork';
+      cropSub.textContent = "Drag to reposition, use the slider to zoom. Only what's inside the circle will show on the disc.";
+    } else {
+      const s = SIZES[currentSize];
+      const maxDim = 480;
+      if(s.w >= s.h){ cropW = maxDim; cropH = maxDim*s.h/s.w; }
+      else { cropH = maxDim; cropW = maxDim*s.w/s.h; }
+      cropMaskEl.style.display = 'none';
+      cropTitle.textContent = 'Crop your background';
+      cropSub.textContent = 'Drag to reposition, use the slider to zoom. This matches the ' + (currentSize==='reel'?'Reel':currentSize==='youtube'?'YouTube':'Post') + ' frame.';
+    }
+    cropCanvas.width = cropW; cropCanvas.height = cropH;
+    cropCanvasWrap.style.aspectRatio = cropW + ' / ' + cropH;
+
+    cropBaseScale = Math.max(cropW/im.width, cropH/im.height);
+    cropOverlay.classList.remove('hidden');
+    drawCrop();
+  }
+
+  function clampCropPan(){
+    const scale = cropBaseScale*cropZoom;
+    const iw = cropRawImg.width*scale, ih = cropRawImg.height*scale;
+    const maxPanX = Math.max(0,(iw-cropW)/2);
+    const maxPanY = Math.max(0,(ih-cropH)/2);
+    cropPanX = Math.min(maxPanX, Math.max(-maxPanX, cropPanX));
+    cropPanY = Math.min(maxPanY, Math.max(-maxPanY, cropPanY));
+  }
+
+  function drawCrop(){
+    cropCtx.clearRect(0,0,cropW,cropH);
+    cropCtx.fillStyle='#100c16'; cropCtx.fillRect(0,0,cropW,cropH);
+    const scale = cropBaseScale*cropZoom;
+    const iw = cropRawImg.width*scale, ih = cropRawImg.height*scale;
+    const cx = cropW/2 + cropPanX, cy = cropH/2 + cropPanY;
+    cropCtx.drawImage(cropRawImg, cx-iw/2, cy-ih/2, iw, ih);
+  }
+
+  cropCanvas.addEventListener('pointerdown', e=>{
+    cropDragging=true; cropLastX=e.clientX; cropLastY=e.clientY;
+    cropCanvas.setPointerCapture(e.pointerId);
+  });
+  cropCanvas.addEventListener('pointermove', e=>{
+    if(!cropDragging) return;
+    const rect = cropCanvas.getBoundingClientRect();
+    const f = cropW/rect.width;
+    cropPanX += (e.clientX-cropLastX)*f;
+    cropPanY += (e.clientY-cropLastY)*f;
+    cropLastX=e.clientX; cropLastY=e.clientY;
+    clampCropPan(); drawCrop();
+  });
+  cropCanvas.addEventListener('pointerup', ()=> cropDragging=false);
+  cropCanvas.addEventListener('pointercancel', ()=> cropDragging=false);
+
+  zoomSlider.addEventListener('input', ()=>{
+    cropZoom = Number(zoomSlider.value);
+    clampCropPan(); drawCrop();
+  });
+
+  cropCancelBtn.addEventListener('click', ()=> cropOverlay.classList.add('hidden'));
+
+  cropUseBtn.addEventListener('click', ()=>{
+    const longSide = cropMode==='disc' ? 900 : 1400;
+    const outW = cropW>=cropH ? longSide : Math.round(longSide*cropW/cropH);
+    const outH = cropH>=cropW ? longSide : Math.round(longSide*cropH/cropW);
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW; outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+    const ratio = outW/cropW;
+    const scale = cropBaseScale*cropZoom*ratio;
+    const iw = cropRawImg.width*scale, ih = cropRawImg.height*scale;
+    const cx = outW/2 + cropPanX*ratio, cy = outH/2 + cropPanY*ratio;
+    outCtx.drawImage(cropRawImg, cx-iw/2, cy-ih/2, iw, ih);
+
+    const finalImg = new Image();
+    finalImg.onload = ()=>{
+      if(cropMode==='disc'){
+        discImg = finalImg;
+        discSub.textContent = pendingFileName || 'Cropped image';
+        discBtn.classList.add('filled');
+        deviceHint.style.display='none';
+        checkReady();
+      } else {
+        bgImg = finalImg;
+        bgSub.textContent = pendingFileName || 'Cropped image';
+        bgBtn.classList.add('filled');
+      }
+      cropOverlay.classList.add('hidden');
+      scheduleBackgroundRender();
+    };
+    finalImg.src = outCanvas.toDataURL('image/png');
+  });
+
+  discBtn.addEventListener('click', ()=>discInput.click());
+  discInput.addEventListener('change', e=> loadDiscFile(e.target.files[0]) );
+
+  device.style.cursor='pointer';
+  device.addEventListener('click', ()=>discInput.click());
+  device.addEventListener('dragover', e=>{ e.preventDefault(); device.style.filter='brightness(1.15)'; });
+  device.addEventListener('dragleave', ()=>{ device.style.filter=''; });
+  device.addEventListener('drop', e=>{
+    e.preventDefault(); device.style.filter='';
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    loadDiscFile(f);
+  });
+
+  bgBtn.addEventListener('click', ()=>bgInput.click());
+  bgInput.addEventListener('change', e=> loadBgFile(e.target.files[0]) );
+
+  audioBtn.addEventListener('click', ()=>audioInput.click());
+  audioInput.addEventListener('change', e=>{
+    const f=e.target.files[0]; if(!f) return;
+    audioSub.textContent=f.name; audioBtn.classList.add('filled');
+    audio.src=URL.createObjectURL(f);
+    audio.addEventListener('loadedmetadata', function onMeta(){
+      audioLoaded=true; trimPlayBtn.disabled=false;
+      if(currentSize==='youtube') durationSel = audio.duration;
+      recalcTrim();
+      checkReady();
+      audio.removeEventListener('loadedmetadata', onMeta);
+      scheduleBackgroundRender();
+    });
+  });
+
+  function fmt(s){
+    s = Math.max(0, Math.round(s));
+    const m = Math.floor(s/60);
+    const sec = String(s%60).padStart(2,'0');
+    return `${m}:${sec}`;
+  }
+
+  let trimPreviewPlaying = false;
+
+  function updateTrimWindow(){
+    if(!audioLoaded || !audio.duration) return;
+    const start = Number(trimStart.value);
+    const leftPct = (start/audio.duration)*100;
+    const widthPct = (trimLen/audio.duration)*100;
+    trimWindow.style.left = leftPct+'%';
+    trimWindow.style.width = widthPct+'%';
+  }
+
+  function recalcTrim(){
+    if(!audioLoaded) return;
+    trimLen = Math.min(durationSel, audio.duration);
+    trimStart.max = Math.max(0, Math.floor(audio.duration - trimLen));
+    trimStart.disabled = trimStart.max<=0;
+    trimSub.textContent = audio.duration > trimLen
+      ? `Drag to choose where the ${Math.round(trimLen)}s clip starts (track is ${Math.round(audio.duration)}s)`
+      : `Whole track will be used (${Math.round(audio.duration)}s)`;
+    trimTotalLabel.textContent = `Track: ${fmt(audio.duration)}`;
+    audio.currentTime = Number(trimStart.value);
+    updateTrimWindow();
+    trimCurTime.textContent = fmt(trimLen);
+  }
+  trimStart.addEventListener('input', ()=>{
+    audio.currentTime=Number(trimStart.value);
+    updateTrimWindow();
+    if(!trimPreviewPlaying) trimCurTime.textContent = fmt(trimLen);
+    scheduleBackgroundRender();
+  });
+
+  trimPlayBtn.addEventListener('click', ()=>{
+    if(!audioLoaded) return;
+    trimPreviewPlaying = !trimPreviewPlaying;
+    if(trimPreviewPlaying){
+      const start = Number(trimStart.value);
+      audio.currentTime = start;
+      audio.play();
+      trimPlayhead.style.display='block';
+      trimPlayIcon.innerHTML = '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
+    } else {
+      audio.pause();
+      trimPlayhead.style.display='none';
+      trimPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      trimCurTime.textContent = fmt(trimLen);
+    }
+  });
+
+  audio.addEventListener('timeupdate', ()=>{
+    if(!trimPreviewPlaying) return;
+    const start = Number(trimStart.value);
+    if(audio.currentTime >= start+trimLen){
+      audio.pause(); audio.currentTime = start; trimPreviewPlaying = false;
+      trimPlayhead.style.display='none';
+      trimPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      trimCurTime.textContent = fmt(trimLen);
+      return;
+    }
+    const pct = (audio.currentTime/audio.duration)*100;
+    trimPlayhead.style.left = pct+'%';
+    trimCurTime.textContent = fmt(audio.currentTime-start);
+  });
+
+  durationPills.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    [...durationPills.children].forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');
+    durationSel = Number(b.dataset.dur);
+    recalcTrim();
+    scheduleBackgroundRender();
+  });
+
+  function checkReady(){ payBtn.disabled = !(discImg && audioLoaded); }
+
+  payBtn.addEventListener('click', ()=>{
+    overlay.classList.remove('hidden');
+    payForm.style.display='block'; renderStage.style.display='none'; downloadLink.style.display='none';
+  });
+  modalClose.addEventListener('click', ()=>overlay.classList.add('hidden'));
+  applePayBtn.addEventListener('click', startRenderFlow);
+  confirmPay.addEventListener('click', startRenderFlow);
+
+  function startRenderFlow(){
+    payForm.style.display='none'; renderStage.style.display='block';
+    downloadLink.style.display='none';
+
+    if(preRenderedBlob && !preRenderStale && !preRenderInProgress){
+      // Already rendered in the background while they were setting things up — instant.
+      statusLine.textContent='Payment confirmed. Your spinner was already rendered — here it is!';
+      progressFill.style.width='100%';
+      downloadLink.href = preRenderedUrl;
+      downloadLink.download = 'spinner-'+currentSize+'.webm';
+      downloadLink.style.display='block';
+      return;
+    }
+
+    statusLine.textContent = preRenderInProgress
+      ? 'Payment confirmed. Finishing the render that was already underway…'
+      : 'Payment confirmed (demo). Rendering your spinner…';
+    progressFill.style.width='0%';
+    captureExport(pct=>{ progressFill.style.width=pct+'%'; })
+      .then(blob=>{
+        downloadLink.href = URL.createObjectURL(blob);
+        downloadLink.download = 'spinner-'+currentSize+'.webm';
+        downloadLink.style.display='block';
+        statusLine.textContent = 'Done — your spinner is ready.';
+        progressFill.style.width = '100%';
+      })
+      .catch(()=>{
+        statusLine.textContent = 'Your browser blocked autoplay for render — press preview play once, then try again.';
+      });
+  }
+
+  // ---- Core export capture: records the live canvas + trimmed audio into a webm blob ----
+  function captureExport(onProgress){
+    return new Promise((resolve, reject)=>{
+      const stream = canvas.captureStream(30);
+      const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const src = new Audio(audio.src);
+      const dest = audioCtx.createMediaStreamDestination();
+      audioCtx.createMediaElementSource(src).connect(dest);
+      dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+
+      const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9,opus'});
+      const chunks=[];
+      recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+      recorder.onstop = ()=>{ audioCtx.close(); resolve(new Blob(chunks,{type:'video/webm'})); };
+      recorder.onerror = e=>{ audioCtx.close(); reject(e); };
+
+      const start = Number(trimStart.value);
+      const clipLen = trimLen;
+      src.currentTime = start;
+      src.play().then(()=>{
+        recorder.start();
+        const durMs = clipLen*1000, t0 = performance.now();
+        const prog = setInterval(()=>{
+          const pct = Math.min(100, ((performance.now()-t0)/durMs)*100);
+          if(onProgress) onProgress(pct);
+          if(pct>=100) clearInterval(prog);
+        },100);
+        setTimeout(()=>{ recorder.stop(); src.pause(); }, durMs+150);
+      }).catch(reject);
+    });
+  }
+
+  // ---- Background pre-rendering: renders as soon as inputs are ready so checkout is instant ----
+  let preRenderedBlob=null, preRenderedUrl=null, preRenderInProgress=false, preRenderStale=true;
+  let renderGen=0, preRenderTimer=null;
+
+  function setRenderStatus(state){
+    if(!renderStatus) return;
+    renderStatus.classList.remove('rs-rendering','rs-ready','rs-error');
+    if(state==='missing'){ renderStatus.style.display='none'; return; }
+    renderStatus.style.display='flex';
+    if(state==='rendering'){ renderStatus.classList.add('rs-rendering'); renderStatus.textContent='Preparing your spinner in the background…'; }
+    else if(state==='ready'){ renderStatus.classList.add('rs-ready'); renderStatus.textContent='Ready — instant download at checkout'; }
+    else if(state==='error'){ renderStatus.classList.add('rs-error'); renderStatus.textContent='Press the trim preview play once to enable rendering'; }
+  }
+
+  function scheduleBackgroundRender(){
+    renderGen++;
+    preRenderStale = true;
+    clearTimeout(preRenderTimer);
+    if(!(discImg && audioLoaded)){ setRenderStatus('missing'); return; }
+    setRenderStatus('rendering');
+    preRenderTimer = setTimeout(runBackgroundRender, 250);
+  }
+
+  function runBackgroundRender(){
+    if(!(discImg && audioLoaded)) { setRenderStatus('missing'); return; }
+    if(preRenderInProgress) return; // will catch up automatically once current pass finishes
+    preRenderInProgress = true;
+    const myGen = renderGen;
+    setRenderStatus('rendering');
+    captureExport().then(blob=>{
+      preRenderInProgress = false;
+      if(myGen !== renderGen){ runBackgroundRender(); return; } // settings changed mid-render, redo
+      if(preRenderedUrl) URL.revokeObjectURL(preRenderedUrl);
+      preRenderedBlob = blob;
+      preRenderedUrl = URL.createObjectURL(blob);
+      preRenderStale = false;
+      setRenderStatus('ready');
+    }).catch(()=>{
+      preRenderInProgress = false;
+      setRenderStatus('error');
+    });
+  }
+})();
+</script>
+</body>
+</html>
